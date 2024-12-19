@@ -8,7 +8,7 @@ use crate::{
     lsm_iterator::FusedIterator,
     lsm_storage::{LsmStorageInner, LsmStorageOptions},
     mem_table::MemTable,
-    tests::harness::{check_lsm_iter_result_by_key,check_lsm_iter_result_by_key2},
+    tests::harness::check_lsm_iter_result_by_key,
 };
 
 use super::harness::{check_iter_result_by_key, expect_iter_error, MockIterator};

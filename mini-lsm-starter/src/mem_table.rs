@@ -1,6 +1,5 @@
 #![allow(dead_code)] // REMOVE THIS LINE after fully implementing this functionality
 
-
 use std::ops::Bound;
 use std::path::Path;
 use std::sync::atomic::AtomicUsize;
@@ -117,11 +116,12 @@ impl MemTable {
 
     /// Get an iterator over a range of keys.
     pub fn scan(&self, _lower: Bound<&[u8]>, _upper: Bound<&[u8]>) -> MemTableIterator {
-        let mut iter = MemTableIteratorBuilder{
+        let mut iter = MemTableIteratorBuilder {
             map: self.map.clone(),
             iter_builder: |map| map.range((map_bound(_lower), map_bound(_upper))),
-            item: (Bytes::new(), Bytes::new())
-        }.build();
+            item: (Bytes::new(), Bytes::new()),
+        }
+        .build();
         iter.next();
         iter
     }

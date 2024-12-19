@@ -49,7 +49,7 @@ impl<I: StorageIterator> MergeIterator<I> {
         if iters.is_empty() {
             return MergeIterator {
                 iters: BinaryHeap::new(),
-                current: None
+                current: None,
             };
         }
 
@@ -58,7 +58,7 @@ impl<I: StorageIterator> MergeIterator<I> {
             let mut iters = iters;
             return MergeIterator {
                 iters: BinaryHeap::new(),
-                current: Some(HeapWrapper(0, iters.pop().unwrap()))
+                current: Some(HeapWrapper(0, iters.pop().unwrap())),
             };
         }
 
@@ -69,11 +69,11 @@ impl<I: StorageIterator> MergeIterator<I> {
                 idx += 1;
             }
         }
-    
+
         let cur = binary_heap.pop().unwrap();
         MergeIterator {
             iters: binary_heap,
-            current: Some(cur)
+            current: Some(cur),
         }
     }
 }
@@ -103,13 +103,19 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
 
     fn next(&mut self) -> Result<()> {
         let current = self.current.as_mut().unwrap();
-        while let Some(mut heap ) = self.iters.peek_mut() {
+        while let Some(mut heap) = self.iters.peek_mut() {
             if heap.1.key() < current.1.key() {
-                println!("bug {:?} {:?}, {:?} {:?}", std::str::from_utf8(heap.1.key().raw_ref()), std::str::from_utf8(heap.1.value()), std::str::from_utf8(current.1.key().raw_ref()), std::str::from_utf8(current.1.value()));
+                println!(
+                    "bug {:?} {:?}, {:?} {:?}",
+                    std::str::from_utf8(heap.1.key().raw_ref()),
+                    std::str::from_utf8(heap.1.value()),
+                    std::str::from_utf8(current.1.key().raw_ref()),
+                    std::str::from_utf8(current.1.value())
+                );
                 assert!(false);
             }
             if heap.1.key() == current.1.key() {
-                if let e @ Err(_) =  heap.1.next() {
+                if let e @ Err(_) = heap.1.next() {
                     PeekMut::pop(heap);
                     return e;
                 }

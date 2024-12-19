@@ -145,17 +145,6 @@ where
     assert!(!iter.is_valid());
 }
 
-pub fn check_lsm_iter_result_by_key2<I>(iter: &mut I, expected: Vec<(Bytes, Bytes)>)
-where
-    I: for<'a> StorageIterator<KeyType<'a> = &'a [u8]>,
-{
-    while iter.is_valid() {
-        println!("check_lsm_iter_result_by_key2 {:?}, {:?}", std::str::from_utf8(iter.key()), std::str::from_utf8(iter.value()));
-        iter.next();
-    }
-    assert!(!iter.is_valid());
-}
-
 pub fn check_lsm_iter_result_by_key<I>(iter: &mut I, expected: Vec<(Bytes, Bytes)>)
 where
     I: for<'a> StorageIterator<KeyType<'a> = &'a [u8]>,
@@ -172,10 +161,9 @@ where
         assert_eq!(
             v,
             iter.value(),
-            "expected value: {:?}, actual value: {:?}, {:?}",
+            "expected value: {:?}, actual value: {:?}",
             v,
             as_bytes(iter.value()),
-            std::str::from_utf8(iter.value())
         );
         iter.next().unwrap();
     }

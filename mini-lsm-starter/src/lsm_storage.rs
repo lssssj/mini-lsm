@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use anyhow::{Ok, Result};
 use bytes::Bytes;
-use nom::Err;
+
 use parking_lot::{Mutex, MutexGuard, RwLock};
 
 use crate::block::Block;
@@ -17,10 +17,9 @@ use crate::compact::{
     SimpleLeveledCompactionController, SimpleLeveledCompactionOptions, TieredCompactionController,
 };
 use crate::iterators::merge_iterator::MergeIterator;
-use crate::iterators::StorageIterator;
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
-use crate::mem_table::{MemTable, MemTableIterator};
+use crate::mem_table::MemTable;
 use crate::mvcc::LsmMvccInner;
 use crate::table::SsTable;
 
@@ -359,7 +358,7 @@ impl LsmStorageInner {
     /// Force freeze the current memtable to an immutable memtable
     pub fn force_freeze_memtable(&self, _state_lock_observer: &MutexGuard<'_, ()>) -> Result<()> {
         let id = self.next_sst_id();
-        
+
         let memtable = { Arc::new(MemTable::create(id)) };
         let mut guard = self.state.write();
         let mut state = guard.as_ref().clone();
@@ -393,7 +392,7 @@ impl LsmStorageInner {
         let mut iters = vec![];
         let mem_iter = state.memtable.scan(_lower, _upper);
         iters.push(Box::new(mem_iter));
-        
+
         for table in &state.imm_memtables {
             iters.push(Box::new(table.scan(_lower, _upper)));
         }

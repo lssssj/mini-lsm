@@ -16,7 +16,7 @@ pub struct LsmIterator {
 }
 
 impl LsmIterator {
-    pub(crate) fn new(iter: LsmIteratorInner) -> Result<Self> {  
+    pub(crate) fn new(iter: LsmIteratorInner) -> Result<Self> {
         let mut iter = Self { inner: iter };
         iter.move_to_non_delete()?;
         Ok(iter)
@@ -73,7 +73,7 @@ impl<I: StorageIterator> StorageIterator for FusedIterator<I> {
 
     fn is_valid(&self) -> bool {
         if self.has_errored {
-            return false
+            return false;
         }
         self.iter.is_valid()
     }
