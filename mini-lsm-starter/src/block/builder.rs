@@ -39,7 +39,7 @@ impl BlockBuilder {
         if self.estimated_size() + key.len() + value.len() + 3 * SIZEOF_U16 /* key_len, value_len, offset_len */ > self.block_size
             && !self.is_empty()
         {   
-            println!("{:?} {:?} {:?}", self.block_size, self.estimated_size(), key.len() + value.len() + 3 * SIZEOF_U16);
+            /// println!("block full {:?} {:?} {:?}", self.block_size, self.estimated_size(), key.len() + value.len() + 3 * SIZEOF_U16);
             return false;
         }
         self.offsets.push(self.data.len() as u16);

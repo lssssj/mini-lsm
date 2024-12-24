@@ -67,7 +67,7 @@ impl BlockIterator {
     /// Returns true if the iterator is valid.
     /// Note: You may want to make use of `key`
     pub fn is_valid(&self) -> bool {
-        let key_len = self.block.data.as_slice().get_u16() as usize;
+        let key_len = self.block.offsets.len() as usize;
         self.idx < key_len
     }
 
@@ -106,9 +106,10 @@ impl BlockIterator {
         for i in 0..keys {
             self.seek_to_idx(i);
             if self.key.as_key_slice() >= key {
-                break;
+                return;
             }
         }
+        self.idx += 1;
     }
 
     pub fn conclude(&self) {
