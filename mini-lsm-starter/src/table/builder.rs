@@ -1,9 +1,9 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
+use std::sync::Arc;
 use std::u64;
 use std::{io::Read, path::Path};
-use std::sync::Arc;
 
 use anyhow::Result;
 use bytes::{BufMut, Bytes};
@@ -12,7 +12,11 @@ use super::bloom::Bloom;
 use super::{BlockMeta, SsTable};
 use crate::key::KeyVec;
 use crate::table::FileObject;
-use crate::{block::BlockBuilder, key::{KeyBytes, KeySlice}, lsm_storage::BlockCache};
+use crate::{
+    block::BlockBuilder,
+    key::{KeyBytes, KeySlice},
+    lsm_storage::BlockCache,
+};
 
 /// Builds an SSTable from key-value pairs.
 pub struct SsTableBuilder {
@@ -28,11 +32,12 @@ pub struct SsTableBuilder {
 impl SsTableBuilder {
     /// Create a builder based on target block size.
     pub fn new(block_size: usize) -> Self {
-        Self { builder: BlockBuilder::new(block_size), 
-            first_key: Vec::new(), 
-            last_key: Vec::new(), 
-            data: Vec::new(), 
-            meta: Vec::new(), 
+        Self {
+            builder: BlockBuilder::new(block_size),
+            first_key: Vec::new(),
+            last_key: Vec::new(),
+            data: Vec::new(),
+            meta: Vec::new(),
             block_size,
             key_hashes: Vec::new(),
         }
@@ -48,12 +53,14 @@ impl SsTableBuilder {
             std::mem::swap(&mut self.builder, &mut builder);
             assert!(self.builder.add(key, value), "error");
             let block = builder.build();
-            let meta = BlockMeta{offset: self.data.len(), 
-                                            first_key: KeyVec::from_vec(self.first_key.clone()).into_key_bytes(), 
-                                            last_key: KeyVec::from_vec(self.last_key.clone()).into_key_bytes(), };
+            let meta = BlockMeta {
+                offset: self.data.len(),
+                first_key: KeyVec::from_vec(self.first_key.clone()).into_key_bytes(),
+                last_key: KeyVec::from_vec(self.last_key.clone()).into_key_bytes(),
+            };
             self.meta.push(meta);
             self.data.append(&mut block.encode().to_vec());
-            self.first_key  = key.raw_ref().to_vec();
+            self.first_key = key.raw_ref().to_vec();
             self.last_key = key.raw_ref().to_vec();
         }
         if self.first_key.is_empty() {
@@ -78,9 +85,11 @@ impl SsTableBuilder {
         path: impl AsRef<Path>,
     ) -> Result<SsTable> {
         let mut meta_vec = self.meta;
-        let meta = BlockMeta{offset: self.data.len(), 
-            first_key: KeyVec::from_vec(self.first_key.clone()).into_key_bytes(), 
-            last_key: KeyVec::from_vec(self.last_key.clone()).into_key_bytes(), };
+        let meta = BlockMeta {
+            offset: self.data.len(),
+            first_key: KeyVec::from_vec(self.first_key.clone()).into_key_bytes(),
+            last_key: KeyVec::from_vec(self.last_key.clone()).into_key_bytes(),
+        };
         meta_vec.push(meta);
         let block = self.builder.build();
         let mut buf = self.data;

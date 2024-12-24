@@ -17,7 +17,11 @@ impl SsTableIterator {
     pub fn create_and_seek_to_first(table: Arc<SsTable>) -> Result<Self> {
         let block = table.read_block(0)?;
         let blk_iter = BlockIterator::create_and_seek_to_first(block);
-        Ok(Self { table, blk_iter, blk_idx: 0 })
+        Ok(Self {
+            table,
+            blk_iter,
+            blk_idx: 0,
+        })
     }
 
     /// Seek to the first key-value pair in the first data block.
@@ -28,14 +32,17 @@ impl SsTableIterator {
         Ok(())
     }
 
-    pub fn create_and_seek_to_key_inner(table: Arc<SsTable>, key: KeySlice) -> Result<(usize, BlockIterator)> {
+    pub fn create_and_seek_to_key_inner(
+        table: Arc<SsTable>,
+        key: KeySlice,
+    ) -> Result<(usize, BlockIterator)> {
         let mut blk_idx = table.find_block_idx(key);
-        let mut blk_iter = 
+        let mut blk_iter =
             BlockIterator::create_and_seek_to_key(table.read_block_cached(blk_idx)?, key);
         if !blk_iter.is_valid() {
             blk_idx += 1;
             if blk_idx < table.num_of_blocks() {
-                blk_iter = 
+                blk_iter =
                     BlockIterator::create_and_seek_to_first(table.read_block_cached(blk_idx)?);
             }
         }
@@ -44,16 +51,20 @@ impl SsTableIterator {
 
     /// Create a new iterator and seek to the first key-value pair which >= `key`.
     pub fn create_and_seek_to_key(table: Arc<SsTable>, key: KeySlice) -> Result<Self> {
-        let (blk_idx, blk_iter) = 
+        let (blk_idx, blk_iter) =
             SsTableIterator::create_and_seek_to_key_inner(table.clone(), key)?;
-        Ok(Self { table, blk_iter, blk_idx})
+        Ok(Self {
+            table,
+            blk_iter,
+            blk_idx,
+        })
     }
 
     /// Seek to the first key-value pair which >= `key`.
     /// Note: You probably want to review the handout for detailed explanation when implementing
     /// this function.
     pub fn seek_to_key(&mut self, key: KeySlice) -> Result<()> {
-        let (blk_idx, blk_iter) = 
+        let (blk_idx, blk_iter) =
             SsTableIterator::create_and_seek_to_key_inner(self.table.clone(), key)?;
         self.blk_idx = blk_idx;
         self.blk_iter = blk_iter;

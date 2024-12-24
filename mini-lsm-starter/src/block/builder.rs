@@ -38,7 +38,7 @@ impl BlockBuilder {
         assert!(!key.is_empty(), "key must not be empty");
         if self.estimated_size() + key.len() + value.len() + 3 * SIZEOF_U16 /* key_len, value_len, offset_len */ > self.block_size
             && !self.is_empty()
-        {   
+        {
             /// println!("block full {:?} {:?} {:?}", self.block_size, self.estimated_size(), key.len() + value.len() + 3 * SIZEOF_U16);
             return false;
         }

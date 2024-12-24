@@ -113,6 +113,11 @@ impl BlockIterator {
     }
 
     pub fn conclude(&self) {
-        println!("{:?} {:?} {:?}", self.block.data.len(), self.block.offsets.len(), self.idx)
+        println!(
+            "{:?} {:?} {:?}",
+            self.block.data.len(),
+            self.block.offsets.len(),
+            self.idx
+        )
     }
 }

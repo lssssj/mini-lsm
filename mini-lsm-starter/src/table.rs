@@ -35,10 +35,7 @@ impl BlockMeta {
     /// Encode block meta to a buffer.
     /// You may add extra fields to the buffer,
     /// in order to help keep track of `first_key` when decoding from the same buffer in the future.
-    pub fn encode_block_meta(
-        block_meta: &[BlockMeta],
-        buf: &mut Vec<u8>,
-    ) {
+    pub fn encode_block_meta(block_meta: &[BlockMeta], buf: &mut Vec<u8>) {
         let mut estimated_size = std::mem::size_of::<u32>();
         for meta in block_meta {
             // The size of offset
@@ -80,7 +77,11 @@ impl BlockMeta {
             let first_key = KeyBytes::from_bytes(buf.copy_to_bytes(key_len));
             key_len = buf.get_u16() as usize;
             let last_key = KeyBytes::from_bytes(buf.copy_to_bytes(key_len));
-            let meta = BlockMeta{offset, first_key, last_key};
+            let meta = BlockMeta {
+                offset,
+                first_key,
+                last_key,
+            };
             blk_metas.push(meta);
         }
         if buf.get_u32() != checksum {
@@ -195,8 +196,11 @@ impl SsTable {
     /// Read a block from the disk.
     pub fn read_block(&self, block_idx: usize) -> Result<Arc<Block>> {
         let start = self.block_meta[block_idx].offset;
-        let len = self.block_meta.get(block_idx + 1)
-                .map_or(self.block_meta_offset, |x| x.offset) - start;
+        let len = self
+            .block_meta
+            .get(block_idx + 1)
+            .map_or(self.block_meta_offset, |x| x.offset)
+            - start;
         let v = self.file.read(start as u64, len as u64)?;
         let block = Block::decode(v.as_slice());
         Ok(Arc::new(block))
@@ -205,7 +209,9 @@ impl SsTable {
     /// Read a block from disk, with block cache. (Day 4)
     pub fn read_block_cached(&self, block_idx: usize) -> Result<Arc<Block>> {
         if let Some(blk_cache) = &self.block_cache {
-            let blk = blk_cache.try_get_with((self.id, block_idx), || self.read_block(block_idx)).map_err(|e| anyhow!("{}", e))?;
+            let blk = blk_cache
+                .try_get_with((self.id, block_idx), || self.read_block(block_idx))
+                .map_err(|e| anyhow!("{}", e))?;
             Ok(blk)
         } else {
             self.read_block(block_idx)
