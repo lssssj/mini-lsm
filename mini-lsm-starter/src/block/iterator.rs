@@ -33,11 +33,14 @@ impl BlockIterator {
 
     /// Creates a block iterator and seek to the first entry.
     pub fn create_and_seek_to_first(block: Arc<Block>) -> Self {
-        let key_len = block.data.as_slice().get_u16() as usize;
-        let key = KeyVec::from_vec(block.data[2..key_len + 2].to_vec());
-        let first_key = KeyVec::from_vec(block.data[2..key_len + 2].to_vec());
-        let value_len = (&block.data[(2 + key_len)..]).get_u16() as usize;
-        let value_range = (2 + key_len + 2, 2 + key_len + 2 + value_len);
+        let mut entry = block.data.as_slice();
+        let key_overlap_len = entry.get_u16() as usize;
+        let key_len = entry.get_u16() as usize;
+        let key_slice = &entry[..key_len];
+        let key = KeyVec::from_vec(key_slice.to_vec());
+        let first_key = KeyVec::from_vec(key_slice.to_vec());
+        let value_len = (&block.data[(2 + 2 + key_len)..]).get_u16() as usize;
+        let value_range = (2 + 2 + key_len + 2, 2 + 2 + key_len + 2 + value_len);
         Self {
             block,
             key,
@@ -83,12 +86,20 @@ impl BlockIterator {
         }
         self.idx = idx;
         let offset = self.block.offsets[idx] as usize;
-        let key_len = (&self.block.data[offset..]).get_u16() as usize;
-        self.key = KeyVec::from_vec(self.block.data[(offset + 2)..(offset + 2 + key_len)].to_vec());
-        let value_len = (&self.block.data[(offset + 2 + key_len)..]).get_u16() as usize;
+        let mut entry = &self.block.data[offset..];
+        let key_overlap_len = entry.get_u16() as usize;
+        let rest_key = entry.get_u16();
+        let rest_key_len = rest_key as usize;
+        let mut key = KeyVec::new();
+        key.append(&self.first_key.raw_ref()[..key_overlap_len]);
+        key.append(&entry[..rest_key_len]);
+        entry.advance(rest_key_len);
+
+        self.key = key;
+        let value_len = entry.get_u16() as usize;
         self.value_range = (
-            offset + 2 + key_len + 2,
-            offset + 2 + key_len + 2 + value_len,
+            offset + 2 + 2 + rest_key_len + 2,
+            offset + 2 + 2 + rest_key_len + 2 + value_len,
         );
     }
 

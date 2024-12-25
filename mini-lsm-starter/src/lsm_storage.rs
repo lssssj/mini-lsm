@@ -369,7 +369,13 @@ impl LsmStorageInner {
         }
         let mut sst_iters = Vec::new();
         for id in &snapshot.l0_sstables {
+            let key_hash = farmhash::hash32(_key);
             let table = snapshot.sstables.get(id).unwrap();
+            if let Some(bloom) = &table.bloom {
+                if !bloom.may_contain(key_hash) {
+                    continue;
+                }
+            }
             sst_iters.push(Box::new(
                 SsTableIterator::create_and_seek_to_key(table.clone(), KeySlice::from_slice(_key))
                     .unwrap(),
