@@ -9,6 +9,7 @@ use std::sync::Arc;
 use anyhow::{Ok, Result};
 use bytes::Bytes;
 
+use nom::character::complete::tab;
 use parking_lot::{Mutex, MutexGuard, RwLock};
 
 use crate::block::Block;
@@ -19,12 +20,12 @@ use crate::compact::{
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
-use crate::key::KeySlice;
+use crate::key::{self, KeyBytes, KeySlice};
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
 use crate::mem_table::{map_bound, MemTable};
 use crate::mvcc::LsmMvccInner;
-use crate::table::{SsTable, SsTableIterator};
+use crate::table::{SsTable, SsTableBuilder, SsTableIterator};
 
 pub type BlockCache = moka::sync::Cache<(usize, usize), Arc<Block>>;
 
@@ -159,7 +160,39 @@ impl Drop for MiniLsm {
 
 impl MiniLsm {
     pub fn close(&self) -> Result<()> {
-        unimplemented!()
+        self.inner.sync_dir()?;
+        self.compaction_notifier.send(()).ok();
+        self.flush_notifier.send(()).ok();
+
+        let mut fth_guard = self.flush_thread.lock();
+        if let Some(handle) = fth_guard.take() {
+            drop(fth_guard);
+            handle.join().map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        }
+
+        let mut cth_guard = self.compaction_thread.lock();
+        if let Some(handle) = cth_guard.take() {
+            drop(cth_guard);
+            handle.join().map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        }
+
+        // create memtable and skip updating manifest
+        if !self.inner.state.read().memtable.is_empty() {
+            // self.inner
+            //     .force_freeze_memtable(Arc::new(MemTable::create(
+            //         self.inner.next_sst_id(),
+            //     )))?;
+        }
+
+        while {
+            let snapshot = self.inner.state.read();
+            !snapshot.imm_memtables.is_empty()
+        } {
+            self.inner.force_flush_next_imm_memtable()?;
+        }
+        self.inner.sync_dir()?;
+
+        Ok(())
     }
 
     /// Start the storage engine by either loading an existing directory or creating a new one if the directory does
@@ -230,6 +263,34 @@ impl MiniLsm {
     pub fn force_full_compaction(&self) -> Result<()> {
         self.inner.force_full_compaction()
     }
+}
+
+fn range_overlap(
+    first_key: &KeyBytes,
+    last_key: &KeyBytes,
+    lower: Bound<&[u8]>,
+    upper: Bound<&[u8]>,
+) -> bool {
+    match lower {
+        Bound::Excluded(key) if last_key.raw_ref() <= key => {
+            return false;
+        }
+        Bound::Included(key) if last_key.raw_ref() < key => {
+            return false;
+        }
+        _ => {}
+    }
+
+    match upper {
+        Bound::Excluded(key) if first_key.raw_ref() >= key => {
+            return false;
+        }
+        Bound::Included(key) if first_key.raw_ref() > key => {
+            return false;
+        }
+        _ => {}
+    }
+    true
 }
 
 impl LsmStorageInner {
@@ -392,7 +453,35 @@ impl LsmStorageInner {
 
     /// Force flush the earliest-created immutable memtable to disk
     pub fn force_flush_next_imm_memtable(&self) -> Result<()> {
-        unimplemented!()
+        let _state_lock = self.state_lock.lock();
+        let memtable_to_flush = {
+            let guard = self.state.read();
+            guard
+                .imm_memtables
+                .last()
+                .expect("no imm_memtable to flush")
+                .clone()
+        };
+
+        let mut sst_builder = SsTableBuilder::new(self.options.block_size);
+        memtable_to_flush.flush(&mut sst_builder)?;
+        let id = memtable_to_flush.id();
+        let sst = Arc::new(sst_builder.build(
+            id,
+            Some(self.block_cache.clone()),
+            self.path_of_sst(id),
+        )?);
+
+        {
+            let mut guard = self.state.write();
+            let mut snapshot = guard.as_ref().clone();
+            let mem = snapshot.imm_memtables.pop().unwrap();
+            assert!(mem.id() == id);
+            snapshot.sstables.insert(id, sst);
+            snapshot.l0_sstables.insert(0, id);
+            *guard = Arc::new(snapshot);
+        };
+        Ok(())
     }
 
     pub fn new_txn(&self) -> Result<()> {
@@ -420,8 +509,13 @@ impl LsmStorageInner {
         }
         let merge_iter = MergeIterator::create(iters);
         let mut sst_iters = Vec::new();
+
         for id in &snapshot.l0_sstables {
             let table = snapshot.sstables.get(id).unwrap();
+            if !range_overlap(table.first_key(), table.last_key(), _lower, _upper) {
+                continue;
+            }
+
             match _lower {
                 Bound::Included(key) => {
                     sst_iters.push(Box::new(

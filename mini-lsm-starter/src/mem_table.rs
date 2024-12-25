@@ -1,5 +1,6 @@
 #![allow(dead_code)] // REMOVE THIS LINE after fully implementing this functionality
 
+use std::io::Read;
 use std::ops::Bound;
 use std::path::Path;
 use std::sync::atomic::AtomicUsize;
@@ -12,7 +13,7 @@ use crossbeam_skiplist::SkipMap;
 use ouroboros::self_referencing;
 
 use crate::iterators::StorageIterator;
-use crate::key::KeySlice;
+use crate::key::{KeyBytes, KeySlice};
 use crate::table::SsTableBuilder;
 use crate::wal::Wal;
 
@@ -128,7 +129,13 @@ impl MemTable {
 
     /// Flush the mem-table to SSTable. Implement in week 1 day 6.
     pub fn flush(&self, _builder: &mut SsTableBuilder) -> Result<()> {
-        unimplemented!()
+        for entry in self.map.iter() {
+            _builder.add(
+                KeyBytes::from_bytes(entry.key().clone()).as_key_slice(),
+                entry.value(),
+            );
+        }
+        Ok(())
     }
 
     pub fn id(&self) -> usize {

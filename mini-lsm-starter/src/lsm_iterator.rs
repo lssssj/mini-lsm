@@ -68,6 +68,10 @@ impl StorageIterator for LsmIterator {
         self.inner.next()?;
         self.move_to_non_delete()
     }
+
+    fn num_active_iterators(&self) -> usize {
+        self.inner.num_active_iterators()
+    }
 }
 
 /// A wrapper around existing iterator, will prevent users from calling `next` when the iterator is
@@ -117,5 +121,9 @@ impl<I: StorageIterator> StorageIterator for FusedIterator<I> {
             self.has_errored = true;
         }
         nx
+    }
+
+    fn num_active_iterators(&self) -> usize {
+        self.iter.num_active_iterators()
     }
 }
