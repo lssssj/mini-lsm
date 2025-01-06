@@ -9,7 +9,6 @@ use std::sync::Arc;
 use anyhow::{Ok, Result};
 use bytes::Bytes;
 
-use nom::character::complete::tab;
 use parking_lot::{Mutex, MutexGuard, RwLock};
 
 use crate::block::Block;
@@ -20,7 +19,7 @@ use crate::compact::{
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
-use crate::key::{self, KeyBytes, KeySlice};
+use crate::key::{KeyBytes, KeySlice};
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
 use crate::mem_table::{map_bound, MemTable};
@@ -358,7 +357,7 @@ impl LsmStorageInner {
             }
             return Ok(Some(value));
         }
-        for mem in snapshot.imm_memtables.clone() {
+        for mem in snapshot.imm_memtables.iter() {
             if let Some(value) = mem.get(_key) {
                 if value.is_empty() {
                     // found tomestone, return key not exists
@@ -398,25 +397,23 @@ impl LsmStorageInner {
 
     /// Put a key-value pair into the storage by writing into the current memtable.
     pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
-        let state_lock = self.state_lock.lock();
-        let guard = self.state.read();
-        guard.memtable.put(_key, _value)?;
-        if guard.memtable.approximate_size() >= self.options.target_sst_size {
-            drop(guard);
-            self.force_freeze_memtable(&state_lock)?;
-        }
+        let size = {
+            let guard = self.state.read();
+            guard.memtable.put(_key, _value)?;
+            guard.memtable.approximate_size()
+        };
+        self.try_freeze(size)?;
         Ok(())
     }
 
     /// Remove a key from the storage by writing an empty value.
     pub fn delete(&self, _key: &[u8]) -> Result<()> {
-        let state_lock = self.state_lock.lock();
-        let guard = self.state.read();
-        guard.memtable.put(_key, &[])?;
-        if guard.memtable.approximate_size() >= self.options.target_sst_size {
-            drop(guard);
-            self.force_freeze_memtable(&state_lock)?;
-        }
+        let size = {
+            let guard = self.state.read();
+            guard.memtable.put(_key, &[])?;
+            guard.memtable.approximate_size()
+        };
+        self.try_freeze(size)?;
         Ok(())
     }
 
@@ -438,6 +435,17 @@ impl LsmStorageInner {
 
     pub(super) fn sync_dir(&self) -> Result<()> {
         unimplemented!()
+    }
+
+    pub fn try_freeze(&self, size: usize) -> Result<()> {
+        if size > self.options.target_sst_size {
+            let state_lock = self.state_lock.lock();
+            let guard = self.state.read();
+            if guard.memtable.approximate_size() > self.options.target_sst_size {
+                self.force_freeze_memtable(&state_lock)?;
+            }
+        }
+        Ok(())
     }
 
     /// Force freeze the current memtable to an immutable memtable
