@@ -366,9 +366,10 @@ impl LsmStorageInner {
                 return Ok(Some(value));
             }
         }
+
         let mut sst_iters = Vec::new();
+        let key_hash = farmhash::hash32(_key);
         for id in &snapshot.l0_sstables {
-            let key_hash = farmhash::hash32(_key);
             let table = snapshot.sstables.get(id).unwrap();
             if let Some(bloom) = &table.bloom {
                 if !bloom.may_contain(key_hash) {
@@ -442,6 +443,7 @@ impl LsmStorageInner {
             let state_lock = self.state_lock.lock();
             let guard = self.state.read();
             if guard.memtable.approximate_size() > self.options.target_sst_size {
+                drop(guard);
                 self.force_freeze_memtable(&state_lock)?;
             }
         }
@@ -514,7 +516,7 @@ impl LsmStorageInner {
             Arc::clone(&guard)
         }; //
 
-        let mut iters = vec![];
+        let mut iters = Vec::with_capacity(1 + snapshot.imm_memtables.len());
         let mem_iter = snapshot.memtable.scan(_lower, _upper);
         iters.push(Box::new(mem_iter));
 

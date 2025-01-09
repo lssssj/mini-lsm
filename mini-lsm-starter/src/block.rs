@@ -36,9 +36,9 @@ impl Block {
                 offsets: vec![],
             };
         }
-        let entry_offsets_len = (&data[data.len() - SIZEOF_U16..]).get_u16() as usize;
-        let data_end = data.len() - entry_offsets_len * SIZEOF_U16 - SIZEOF_U16;
-        let offsets = data[data_end..data_end + entry_offsets_len * SIZEOF_U16]
+        let num_of_entries = (&data[data.len() - SIZEOF_U16..]).get_u16() as usize;
+        let data_end = data.len() - num_of_entries * SIZEOF_U16 - SIZEOF_U16;
+        let offsets = data[data_end..data_end + num_of_entries * SIZEOF_U16]
             .chunks(SIZEOF_U16)
             .map(|mut x| x.get_u16())
             .collect();

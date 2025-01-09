@@ -99,7 +99,9 @@ fn test_task3_storage_integration() {
 
 #[test]
 fn test_task3_freeze_on_capacity() {
+    println!("here1");
     let dir = tempdir().unwrap();
+    println!("here2");
     let mut options = LsmStorageOptions::default_for_week1_test();
     options.target_sst_size = 1024;
     options.num_memtable_limit = 1000;
@@ -107,15 +109,19 @@ fn test_task3_freeze_on_capacity() {
     for _ in 0..1000 {
         storage.put(b"1", b"2333").unwrap();
     }
+    println!("here1");
     let num_imm_memtables = storage.state.read().imm_memtables.len();
     assert!(num_imm_memtables >= 1, "no memtable frozen?");
+    println!("here2");
     for _ in 0..1000 {
         storage.delete(b"1").unwrap();
     }
+    println!("here3");
     assert!(
         storage.state.read().imm_memtables.len() > num_imm_memtables,
         "no more memtable frozen?"
     );
+    println!("here4");
 }
 
 #[test]

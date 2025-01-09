@@ -135,6 +135,9 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
         }
         if let Some(mut heap) = self.iters.peek_mut() {
             if *heap > *current {
+                // println!("key: {:?} {:?} {:?} {:?}", std::str::from_utf8(current.1.key().raw_ref()), current.0, std::str::from_utf8(heap.1.key().raw_ref()), heap.0);
+                // 这里为什么要交换呢？
+                // 因为HeapWrapper的比较器是反过来的，那为什么是反过来的呢，因为BinaryHeap是大根堆
                 std::mem::swap(&mut *heap, current);
             }
         }
