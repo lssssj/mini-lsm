@@ -18,7 +18,7 @@ use crate::{
 /// Represents the internal type for an LSM iterator. This type will be changed across the tutorial for multiple times.
 type MemTableAndLevel0Iter =
     TwoMergeIterator<MergeIterator<MemTableIterator>, MergeIterator<SsTableIterator>>;
-type LsmIteratorInner = TwoMergeIterator<MemTableAndLevel0Iter, SstConcatIterator>;
+type LsmIteratorInner = TwoMergeIterator<MemTableAndLevel0Iter, MergeIterator<SstConcatIterator>>;
 
 pub struct LsmIterator {
     inner: LsmIteratorInner,

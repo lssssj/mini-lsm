@@ -26,6 +26,14 @@ impl SstConcatIterator {
         }
         if !sstables.is_empty() {
             for i in 0..(sstables.len() - 1) {
+                if sstables[i].last_key() >= sstables[i + 1].first_key() {
+                    println!(
+                        "check_sst_valid {:?} {:?} {:?}",
+                        i,
+                        std::str::from_utf8(sstables[i].last_key().raw_ref()),
+                        std::str::from_utf8(sstables[i + 1].first_key().raw_ref())
+                    );
+                }
                 assert!(sstables[i].last_key() < sstables[i + 1].first_key());
             }
         }
