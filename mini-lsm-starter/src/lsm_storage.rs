@@ -295,7 +295,7 @@ fn range_overlap(
 
 impl LsmStorageInner {
     pub(crate) fn next_sst_id(&self) -> usize {
-        println!("call {:?}", self.next_sst_id);
+        // println!("call {:?}", self.next_sst_id);
         self.next_sst_id
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
     }
@@ -473,7 +473,7 @@ impl LsmStorageInner {
     /// Force freeze the current memtable to an immutable memtable
     pub fn force_freeze_memtable(&self, _state_lock_observer: &MutexGuard<'_, ()>) -> Result<()> {
         let id = self.next_sst_id();
-        println!("here call id {:?}", id);
+        // println!("here call id {:?}", id);
         let memtable = { Arc::new(MemTable::create(id)) };
         let mut guard = self.state.write();
         let mut state = guard.as_ref().clone();
@@ -514,7 +514,11 @@ impl LsmStorageInner {
             let mem = snapshot.imm_memtables.pop().unwrap();
             assert!(mem.id() == id);
             snapshot.sstables.insert(id, sst);
-            snapshot.l0_sstables.insert(0, id);
+            if self.compaction_controller.flush_to_l0() {
+                snapshot.l0_sstables.insert(0, id);
+            } else {
+                snapshot.levels.insert(0, (id, vec![id]));
+            }
             *guard = Arc::new(snapshot);
         };
         Ok(())

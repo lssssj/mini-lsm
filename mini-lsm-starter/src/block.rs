@@ -42,7 +42,7 @@ impl Block {
             .chunks(SIZEOF_U16)
             .map(|mut x| x.get_u16())
             .collect();
-        let data = (&data[0..data_end]).to_vec();
+        let data = data[0..data_end].to_vec();
 
         Self { data, offsets }
     }

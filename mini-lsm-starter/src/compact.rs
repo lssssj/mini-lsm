@@ -185,28 +185,41 @@ impl LsmStorageInner {
                 )?;
                 self.compact_sst_from_iter(iter, true)
             }
-            CompactionTask::Simple(slct) => {
+            CompactionTask::Simple(SimpleLeveledCompactionTask {
+                upper_level,
+                upper_level_sst_ids,
+                lower_level: _,
+                lower_level_sst_ids,
+                is_lower_level_bottom_level,
+            })
+            | CompactionTask::Leveled(LeveledCompactionTask {
+                upper_level,
+                upper_level_sst_ids,
+                lower_level: _,
+                lower_level_sst_ids,
+                is_lower_level_bottom_level,
+            }) => {
                 let state = self.state.read();
 
-                if let Some(_) = slct.upper_level {
-                    let mut upper_ssts = Vec::with_capacity(slct.upper_level_sst_ids.len());
-                    for id in &slct.upper_level_sst_ids {
+                if let Some(_) = upper_level {
+                    let mut upper_ssts = Vec::with_capacity(upper_level_sst_ids.len());
+                    for id in upper_level_sst_ids {
                         let table = state.sstables.get(id).unwrap();
                         upper_ssts.push(table.clone());
                     }
                     let upper_iter = SstConcatIterator::create_and_seek_to_first(upper_ssts)?;
 
-                    let mut lower_ssts = Vec::with_capacity(slct.lower_level_sst_ids.len());
-                    for id in &slct.lower_level_sst_ids {
+                    let mut lower_ssts = Vec::with_capacity(lower_level_sst_ids.len());
+                    for id in lower_level_sst_ids {
                         let table = state.sstables.get(id).unwrap();
                         lower_ssts.push(table.clone());
                     }
                     let lower_iter = SstConcatIterator::create_and_seek_to_first(lower_ssts)?;
                     let iter = TwoMergeIterator::create(upper_iter, lower_iter)?;
-                    self.compact_sst_from_iter(iter, slct.is_lower_level_bottom_level)
+                    self.compact_sst_from_iter(iter, *is_lower_level_bottom_level)
                 } else {
-                    let mut l0_sst_iters = Vec::with_capacity(slct.upper_level_sst_ids.len());
-                    for id in &slct.upper_level_sst_ids {
+                    let mut l0_sst_iters = Vec::with_capacity(upper_level_sst_ids.len());
+                    for id in upper_level_sst_ids {
                         let table = state.sstables.get(id).unwrap();
                         l0_sst_iters.push(Box::new(SsTableIterator::create_and_seek_to_first(
                             table.clone(),
@@ -214,17 +227,32 @@ impl LsmStorageInner {
                     }
                     let upper_iter = MergeIterator::create(l0_sst_iters);
 
-                    let mut lower_ssts = Vec::with_capacity(slct.lower_level_sst_ids.len());
-                    for id in &slct.lower_level_sst_ids {
+                    let mut lower_ssts = Vec::with_capacity(lower_level_sst_ids.len());
+                    for id in lower_level_sst_ids {
                         let table = state.sstables.get(id).unwrap();
                         lower_ssts.push(table.clone());
                     }
                     let lower_iter = SstConcatIterator::create_and_seek_to_first(lower_ssts)?;
                     let iter = TwoMergeIterator::create(upper_iter, lower_iter)?;
-                    self.compact_sst_from_iter(iter, slct.is_lower_level_bottom_level)
+                    self.compact_sst_from_iter(iter, *is_lower_level_bottom_level)
                 }
             }
-            _ => Ok(Vec::new()),
+            CompactionTask::Tiered(tiered) => {
+                let state = self.state.read();
+                let mut iters = Vec::with_capacity(tiered.tiers.len());
+                for level in &tiered.tiers {
+                    let mut ssts = Vec::with_capacity(level.1.len());
+                    for id in &level.1 {
+                        ssts.push(state.sstables.get(id).unwrap().clone());
+                    }
+                    let iter = SstConcatIterator::create_and_seek_to_first(ssts)?;
+                    iters.push(Box::new(iter));
+                }
+                self.compact_sst_from_iter(
+                    MergeIterator::create(iters),
+                    tiered.bottom_tier_included,
+                )
+            }
         }
     }
 
@@ -244,7 +272,7 @@ impl LsmStorageInner {
         let result = self.compact(&task)?;
         drop(state);
 
-        let state_lock = self.state_lock.lock();
+        let _state_lock = self.state_lock.lock();
         let mut guard = self.state.write();
         let mut snapshot = guard.as_ref().clone();
         snapshot.l0_sstables.clear();
@@ -267,7 +295,9 @@ impl LsmStorageInner {
             .compaction_controller
             .generate_compaction_task(&snapshot);
         if let Some(task) = task {
+            println!("compaction start");
             println!("mem_id {:?}", snapshot.memtable.id());
+            print!("imm: ");
             for i in &snapshot.imm_memtables {
                 print!("{:?} ", i.id());
             }
@@ -294,8 +324,11 @@ impl LsmStorageInner {
             }
             println!();
 
-            let state_lock = self.state_lock.lock();
-            let snapshot = self.state.read().as_ref().clone();
+            let _state_lock = self.state_lock.lock();
+            let mut snapshot = self.state.read().as_ref().clone();
+            for sst in result {
+                snapshot.sstables.insert(sst.sst_id(), sst);
+            }
             let (mut new_snapshot, files_to_remove) = self
                 .compaction_controller
                 .apply_compaction_result(&snapshot, &task, output.as_slice(), false);
@@ -303,9 +336,6 @@ impl LsmStorageInner {
             for file in &files_to_remove {
                 let res = new_snapshot.sstables.remove(file);
                 assert!(res.is_some(), "error");
-            }
-            for sst in result {
-                new_snapshot.sstables.insert(sst.sst_id(), sst);
             }
 
             let mut guard = self.state.write();

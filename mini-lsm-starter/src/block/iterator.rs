@@ -70,7 +70,7 @@ impl BlockIterator {
     /// Returns true if the iterator is valid.
     /// Note: You may want to make use of `key`
     pub fn is_valid(&self) -> bool {
-        let key_len = self.block.offsets.len() as usize;
+        let key_len = self.block.offsets.len();
         self.idx < key_len
     }
 

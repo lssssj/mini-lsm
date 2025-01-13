@@ -65,11 +65,7 @@ impl SimpleLeveledCompactionController {
                     },
                     lower_level: i + 1,
                     lower_level_sst_ids: snapshot.levels[i].1.clone(),
-                    is_lower_level_bottom_level: if (i + 1) == self.options.max_levels {
-                        true
-                    } else {
-                        false
-                    },
+                    is_lower_level_bottom_level: i + 1 == self.options.max_levels,
                 });
             }
         }
