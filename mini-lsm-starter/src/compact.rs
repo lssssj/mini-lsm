@@ -314,14 +314,6 @@ impl LsmStorageInner {
             }
             let result = self.compact(&task)?;
             let output: Vec<_> = result.iter().map(|sst| sst.sst_id()).collect();
-            for i in 0..output.len() {
-                print!("{} {}", result.get(i).unwrap().sst_id(), output[i]);
-                print!(
-                    "-{:?} {:?} ",
-                    std::str::from_utf8(result.get(i).unwrap().first_key().raw_ref()).unwrap(),
-                    std::str::from_utf8(result.get(i).unwrap().last_key().raw_ref()).unwrap()
-                );
-            }
             println!();
 
             let _state_lock = self.state_lock.lock();
@@ -332,6 +324,13 @@ impl LsmStorageInner {
             let (mut new_snapshot, files_to_remove) = self
                 .compaction_controller
                 .apply_compaction_result(&snapshot, &task, output.as_slice(), false);
+            self.sync_dir()?;
+            if let Some(manifest) = &self.manifest {
+                manifest.add_record(
+                    &_state_lock,
+                    crate::manifest::ManifestRecord::Compaction(task, output),
+                )?;
+            }
 
             for file in &files_to_remove {
                 let res = new_snapshot.sstables.remove(file);

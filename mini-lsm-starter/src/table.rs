@@ -8,7 +8,6 @@ mod iterator;
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
-use std::u64;
 
 use anyhow::{anyhow, bail, Result};
 pub use builder::SsTableBuilder;

@@ -112,7 +112,7 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
                     std::str::from_utf8(current.1.key().raw_ref()),
                     std::str::from_utf8(current.1.value())
                 );
-                assert!(false);
+                unreachable!("failed");
             }
             if heap.1.key() == current.1.key() {
                 if let e @ Err(_) = heap.1.next() {
