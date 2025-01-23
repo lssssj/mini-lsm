@@ -62,12 +62,11 @@ impl MemTable {
     /// Create a memtable from WAL
     pub fn recover_from_wal(id: usize, path: impl AsRef<Path>) -> Result<Self> {
         let skiplist = SkipMap::new();
-        let wal = Wal::create(&path)?;
-        Wal::recover(path, &skiplist)?;
+        let wal = Wal::recover(path, &skiplist)?;
         let approximate_size = skiplist.len();
         let table = MemTable {
             map: Arc::new(skiplist),
-            wal: wal.into(),
+            wal: Some(wal),
             id,
             approximate_size: Arc::new(AtomicUsize::new(approximate_size)),
         };

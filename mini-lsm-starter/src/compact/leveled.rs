@@ -197,6 +197,12 @@ impl LeveledCompactionController {
                     Some(*x)
                 })
                 .collect::<Vec<_>>();
+            if !upper_level_sst_ids_set.is_empty() {
+                println!(
+                    "test_compact {:?} new {:?}",
+                    upper_level_sst_ids_set, new_l0_ssts
+                );
+            }
             assert!(upper_level_sst_ids_set.is_empty());
             snapshot.l0_sstables = new_l0_ssts;
         }

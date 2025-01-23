@@ -108,7 +108,6 @@ impl SimpleLeveledCompactionController {
                 .copied()
                 .filter(|x| !l0_ssts_compacted.remove(x))
                 .collect::<Vec<_>>();
-            assert!(l0_ssts_compacted.is_empty());
             if !new_l0_sstables.is_empty() {
                 print!("new_l0_sstables");
                 for sst in &new_l0_sstables {

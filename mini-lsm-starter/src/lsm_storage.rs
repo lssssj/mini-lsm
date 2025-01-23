@@ -336,12 +336,19 @@ impl LsmStorageInner {
 
         let manifest_path = path.join("MANIFEST");
         if !manifest_path.exists() {
+            if options.enable_wal {
+                state.memtable = Arc::new(MemTable::create_with_wal(
+                    state.memtable.id(),
+                    Self::path_of_wal_static(path, state.memtable.id()),
+                )?);
+            }
             manifest = Manifest::create(manifest_path)?;
             manifest.add_record_when_init(ManifestRecord::NewMemtable(state.memtable.id()))?;
         } else {
             let (m, records) = Manifest::recover(manifest_path)?;
             let mut mem_ids = BTreeSet::new();
             for record in records {
+                println!("record {:?}", record);
                 match record {
                     ManifestRecord::Flush(id) => {
                         assert!(mem_ids.remove(&id), "memtable not exist?");
@@ -517,30 +524,43 @@ impl LsmStorageInner {
     }
 
     /// Write a batch of data into the storage. Implement in week 2 day 7.
-    pub fn write_batch<T: AsRef<[u8]>>(&self, _batch: &[WriteBatchRecord<T>]) -> Result<()> {
-        unimplemented!()
+    pub fn write_batch<T: AsRef<[u8]>>(&self, batch: &[WriteBatchRecord<T>]) -> Result<()> {
+        for record in batch {
+            match record {
+                WriteBatchRecord::Put(key, value) => {
+                    let key = key.as_ref();
+                    let value = value.as_ref();
+                    assert!(!key.is_empty(), "key cannot be empty");
+                    let size = {
+                        let guard = self.state.read();
+                        guard.memtable.put(key, value)?;
+                        guard.memtable.approximate_size()
+                    };
+                    self.try_freeze(size)?;
+                }
+                WriteBatchRecord::Del(key) => {
+                    let key = key.as_ref();
+                    assert!(!key.is_empty(), "key cannot be empty");
+                    let size = {
+                        let guard = self.state.read();
+                        guard.memtable.put(key, b"")?;
+                        guard.memtable.approximate_size()
+                    };
+                    self.try_freeze(size)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Put a key-value pair into the storage by writing into the current memtable.
-    pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
-        let size = {
-            let guard = self.state.read();
-            guard.memtable.put(_key, _value)?;
-            guard.memtable.approximate_size()
-        };
-        self.try_freeze(size)?;
-        Ok(())
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        self.write_batch(&[WriteBatchRecord::Put(key, value)])
     }
 
     /// Remove a key from the storage by writing an empty value.
-    pub fn delete(&self, _key: &[u8]) -> Result<()> {
-        let size = {
-            let guard = self.state.read();
-            guard.memtable.put(_key, &[])?;
-            guard.memtable.approximate_size()
-        };
-        self.try_freeze(size)?;
-        Ok(())
+    pub fn delete(&self, key: &[u8]) -> Result<()> {
+        self.write_batch(&[WriteBatchRecord::Del(key)])
     }
 
     pub(crate) fn path_of_sst_static(path: impl AsRef<Path>, id: usize) -> PathBuf {
@@ -658,6 +678,11 @@ impl LsmStorageInner {
             }
             *guard = Arc::new(snapshot);
         };
+
+        if self.options.enable_wal {
+            println!("remove wal id{}", id);
+            std::fs::remove_file(self.path_of_wal(id))?;
+        }
 
         if let Some(manifest) = &self.manifest {
             manifest.add_record(&_state_lock, manifest::ManifestRecord::Flush(id))?;
