@@ -19,11 +19,11 @@ pub struct BlockBuilder {
 fn compute_overlap(first_key: &KeyVec, key: KeySlice) -> usize {
     let key_vec = key.to_key_vec();
     let mut len = 0;
-    for i in 0..first_key.len() {
-        if i >= key_vec.len() {
+    for i in 0..first_key.key_len() {
+        if i >= key_vec.key_len() {
             break;
         }
-        if first_key.raw_ref()[i] != key_vec.raw_ref()[i] {
+        if first_key.key_ref()[i] != key_vec.key_ref()[i] {
             break;
         }
         len += 1;
@@ -52,7 +52,7 @@ impl BlockBuilder {
     #[must_use]
     pub fn add(&mut self, key: KeySlice, value: &[u8]) -> bool {
         assert!(!key.is_empty(), "key must not be empty");
-        if self.estimated_size() + key.len() + value.len() + 3 * SIZEOF_U16 /* key_len, value_len, offset_len */ > self.block_size
+        if self.estimated_size() + key.raw_len() + value.len() + 3 * SIZEOF_U16 /* key_len, value_len, offset_len */ > self.block_size
             && !self.is_empty()
         {
             // println!("block full {:?} {:?} {:?}", self.block_size, self.estimated_size(), key.len() + value.len() + 3 * SIZEOF_U16);
@@ -62,11 +62,12 @@ impl BlockBuilder {
 
         let overlap_len = compute_overlap(&self.first_key, key);
         self.data.put_u16(overlap_len as u16);
-        let rest_key_len = key.len() - overlap_len;
+        let rest_key_len = key.key_len() - overlap_len;
         self.data.put_u16(rest_key_len as u16);
-        let x = &key.raw_ref()[overlap_len..];
-        assert!(x.len() == key.len() - overlap_len);
+        let x = &key.key_ref()[overlap_len..];
+        assert!(x.len() == key.key_len() - overlap_len);
         self.data.put(x);
+        self.data.put_u64(key.ts());
 
         self.data.put_u16(value.len() as u16);
         self.data.put(value);

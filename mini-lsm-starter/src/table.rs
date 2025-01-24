@@ -42,11 +42,15 @@ impl BlockMeta {
             // The size of key length
             estimated_size += std::mem::size_of::<u16>();
             // The size of actual key
-            estimated_size += meta.first_key.len();
+            estimated_size += meta.first_key.key_len();
+            // The size of ts
+            estimated_size += std::mem::size_of::<u64>();
             // The size of key length
             estimated_size += std::mem::size_of::<u16>();
             // The size of actual key
-            estimated_size += meta.last_key.len();
+            estimated_size += meta.last_key.key_len();
+            // The size of ts
+            estimated_size += std::mem::size_of::<u64>();
         }
         estimated_size += std::mem::size_of::<u32>();
         // Reserve the space to improve performance, especially when the size of incoming data is
@@ -56,10 +60,12 @@ impl BlockMeta {
         buf.put_u32(block_meta.len() as u32);
         for meta in block_meta {
             buf.put_u32(meta.offset as u32);
-            buf.put_u16(meta.first_key.len() as u16);
-            buf.put_slice(meta.first_key.raw_ref());
-            buf.put_u16(meta.last_key.len() as u16);
-            buf.put_slice(meta.last_key.raw_ref());
+            buf.put_u16(meta.first_key.key_len() as u16);
+            buf.put_slice(meta.first_key.key_ref());
+            buf.put_u64(meta.first_key.ts());
+            buf.put_u16(meta.last_key.key_len() as u16);
+            buf.put_slice(meta.last_key.key_ref());
+            buf.put_u64(meta.last_key.ts());
         }
         buf.put_u32(crc32fast::hash(&buf[original_len + 4..]));
         assert_eq!(estimated_size, buf.len() - original_len);
@@ -73,9 +79,13 @@ impl BlockMeta {
         for i in 0..blk_len {
             let offset = buf.get_u32() as usize;
             let mut key_len = buf.get_u16() as usize;
-            let first_key = KeyBytes::from_bytes(buf.copy_to_bytes(key_len));
+            let mut key = buf.copy_to_bytes(key_len);
+            let mut key_ts = buf.get_u64();
+            let first_key = KeyBytes::from_bytes_with_ts(key, key_ts);
             key_len = buf.get_u16() as usize;
-            let last_key = KeyBytes::from_bytes(buf.copy_to_bytes(key_len));
+            key = buf.copy_to_bytes(key_len);
+            key_ts = buf.get_u64();
+            let last_key = KeyBytes::from_bytes_with_ts(key, key_ts);
             let meta = BlockMeta {
                 offset,
                 first_key,

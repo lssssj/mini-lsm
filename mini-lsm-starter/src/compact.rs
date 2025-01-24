@@ -120,12 +120,15 @@ impl LsmStorageInner {
     ) -> Result<Vec<Arc<SsTable>>> {
         let mut result = Vec::new();
         let mut builder: Option<SsTableBuilder> = None;
+        let mut last_key = Vec::<u8>::new();
 
         while iter.is_valid() {
-            if iter.value().is_empty() && compact_to_bottom_level {
-                let _ = iter.next();
-                continue;
-            }
+            // mvcc
+            // if iter.value().is_empty() && compact_to_bottom_level {
+            //    let _ = iter.next();
+            //    continue;
+            // }
+
             if builder.is_some() {
                 builder.as_mut().unwrap().add(iter.key(), iter.value());
             } else {
@@ -133,7 +136,11 @@ impl LsmStorageInner {
                 builder.as_mut().unwrap().add(iter.key(), iter.value());
             }
 
-            if builder.as_mut().unwrap().estimated_size() >= self.options.target_sst_size {
+            let same_as_last_key = iter.key().key_ref() == last_key;
+
+            if builder.as_mut().unwrap().estimated_size() >= self.options.target_sst_size
+                && !same_as_last_key
+            {
                 let id = self.next_sst_id();
                 let sst = Arc::new(builder.unwrap().build(
                     id,
@@ -143,6 +150,11 @@ impl LsmStorageInner {
                 result.push(sst);
                 builder = None;
             }
+
+            if !same_as_last_key {
+                last_key = iter.key().key_ref().to_vec();
+            }
+
             iter.next()?;
         }
 

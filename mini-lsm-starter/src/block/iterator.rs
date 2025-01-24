@@ -37,10 +37,12 @@ impl BlockIterator {
         let key_overlap_len = entry.get_u16() as usize;
         let key_len = entry.get_u16() as usize;
         let key_slice = &entry[..key_len];
-        let key = KeyVec::from_vec(key_slice.to_vec());
-        let first_key = KeyVec::from_vec(key_slice.to_vec());
-        let value_len = (&block.data[(2 + 2 + key_len)..]).get_u16() as usize;
-        let value_range = (2 + 2 + key_len + 2, 2 + 2 + key_len + 2 + value_len);
+        entry.advance(key_len);
+        let ts = entry.get_u64();
+        let key = KeyVec::from_vec_with_ts(key_slice.to_vec(), ts);
+        let first_key = KeyVec::from_vec_with_ts(key_slice.to_vec(), ts);
+        let value_len = (&block.data[(2 + 2 + key_len + 8)..]).get_u16() as usize;
+        let value_range = (2 + 2 + key_len + 8 + 2, 2 + 2 + key_len + 8 + 2 + value_len);
         Self {
             block,
             key,
@@ -91,15 +93,16 @@ impl BlockIterator {
         let rest_key = entry.get_u16();
         let rest_key_len = rest_key as usize;
         let mut key = KeyVec::new();
-        key.append(&self.first_key.raw_ref()[..key_overlap_len]);
+        key.append(&self.first_key.key_ref()[..key_overlap_len]);
         key.append(&entry[..rest_key_len]);
         entry.advance(rest_key_len);
-
+        let ts = entry.get_u64();
+        key.set_ts(ts);
         self.key = key;
         let value_len = entry.get_u16() as usize;
         self.value_range = (
-            offset + 2 + 2 + rest_key_len + 2,
-            offset + 2 + 2 + rest_key_len + 2 + value_len,
+            offset + 2 + 2 + rest_key_len + 8 + 2,
+            offset + 2 + 2 + rest_key_len + 8 + 2 + value_len,
         );
     }
 

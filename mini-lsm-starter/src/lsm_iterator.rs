@@ -3,7 +3,7 @@
 
 use std::ops::Bound;
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use bytes::Bytes;
 
 use crate::{
@@ -23,6 +23,7 @@ type LsmIteratorInner = TwoMergeIterator<MemTableAndLevel0Iter, MergeIterator<Ss
 pub struct LsmIterator {
     inner: LsmIteratorInner,
     end_bound: Bound<Bytes>,
+    prev_key: Vec<u8>,
 }
 
 impl LsmIterator {
@@ -30,15 +31,29 @@ impl LsmIterator {
         let mut iter = Self {
             inner: iter,
             end_bound,
+            prev_key: Vec::new(),
         };
         iter.move_to_non_delete()?;
         Ok(iter)
     }
 
     pub fn move_to_non_delete(&mut self) -> Result<()> {
-        while self.inner.is_valid() && self.inner.value().is_empty() {
-            self.inner.next()?;
+        loop {
+            while self.inner.is_valid() && self.inner.key().to_key_vec().key_ref() == self.prev_key
+            {
+                self.inner.next()?;
+            }
+            if !self.inner.is_valid() {
+                break;
+            }
+
+            self.prev_key.clear();
+            self.prev_key.extend(self.inner.key().key_ref());
+            if !self.inner.value().is_empty() {
+                break;
+            }
         }
+
         Ok(())
     }
 }
@@ -58,7 +73,7 @@ impl StorageIterator for LsmIterator {
     }
 
     fn key(&self) -> &[u8] {
-        self.inner.key().raw_ref()
+        self.inner.key().key_ref()
     }
 
     fn value(&self) -> &[u8] {
@@ -67,7 +82,8 @@ impl StorageIterator for LsmIterator {
 
     fn next(&mut self) -> Result<()> {
         self.inner.next()?;
-        self.move_to_non_delete()
+        self.move_to_non_delete()?;
+        Ok(())
     }
 
     fn num_active_iterators(&self) -> usize {

@@ -16,8 +16,8 @@ use crate::{block::BlockBuilder, key::KeySlice, lsm_storage::BlockCache};
 /// Builds an SSTable from key-value pairs.
 pub struct SsTableBuilder {
     builder: BlockBuilder,
-    first_key: Vec<u8>,
-    last_key: Vec<u8>,
+    first_key: KeyVec,
+    last_key: KeyVec,
     data: Vec<u8>,
     pub(crate) meta: Vec<BlockMeta>,
     block_size: usize,
@@ -29,8 +29,8 @@ impl SsTableBuilder {
     pub fn new(block_size: usize) -> Self {
         Self {
             builder: BlockBuilder::new(block_size),
-            first_key: Vec::new(),
-            last_key: Vec::new(),
+            first_key: KeyVec::new(),
+            last_key: KeyVec::new(),
             data: Vec::new(),
             meta: Vec::new(),
             block_size,
@@ -43,27 +43,30 @@ impl SsTableBuilder {
     /// Note: You should split a new block when the current block is full.(`std::mem::replace` may
     /// be helpful here)
     pub fn add(&mut self, key: KeySlice, value: &[u8]) {
-        self.key_hashes.push(farmhash::hash32(key.raw_ref()));
+        self.key_hashes.push(farmhash::hash32(key.key_ref()));
 
         if !self.builder.add(key, value) {
             let mut builder = BlockBuilder::new(self.block_size);
             std::mem::swap(&mut self.builder, &mut builder);
-            assert!(self.builder.add(key, value), "error");
+            assert!(
+                self.builder.add(key, value),
+                "blockbuilder add key-value error"
+            );
             let block = builder.build();
             let meta = BlockMeta {
                 offset: self.data.len(),
-                first_key: KeyVec::from_vec(self.first_key.clone()).into_key_bytes(),
-                last_key: KeyVec::from_vec(self.last_key.clone()).into_key_bytes(),
+                first_key: self.first_key.clone().into_key_bytes(),
+                last_key: self.last_key.clone().into_key_bytes(),
             };
             self.meta.push(meta);
             self.data.append(&mut block.encode().to_vec());
-            self.first_key = key.raw_ref().to_vec();
-            self.last_key = key.raw_ref().to_vec();
+            self.first_key = key.to_key_vec();
+            self.last_key = key.to_key_vec();
         }
         if self.first_key.is_empty() {
-            self.first_key = key.raw_ref().to_vec();
+            self.first_key = key.to_key_vec();
         }
-        self.last_key = key.raw_ref().to_vec()
+        self.last_key = key.to_key_vec();
     }
 
     /// Get the estimated size of the SSTable.
@@ -84,8 +87,8 @@ impl SsTableBuilder {
         let mut meta_vec = self.meta;
         let meta = BlockMeta {
             offset: self.data.len(),
-            first_key: KeyVec::from_vec(self.first_key.clone()).into_key_bytes(),
-            last_key: KeyVec::from_vec(self.last_key.clone()).into_key_bytes(),
+            first_key: self.first_key.clone().into_key_bytes(),
+            last_key: self.last_key.clone().into_key_bytes(),
         };
         meta_vec.push(meta);
         let block = self.builder.build();

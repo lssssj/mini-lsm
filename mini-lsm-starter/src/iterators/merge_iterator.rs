@@ -107,9 +107,9 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
             if heap.1.key() < current.1.key() {
                 println!(
                     "bug {:?} {:?}, {:?} {:?}",
-                    std::str::from_utf8(heap.1.key().raw_ref()),
+                    std::str::from_utf8(heap.1.key().key_ref()),
                     std::str::from_utf8(heap.1.value()),
-                    std::str::from_utf8(current.1.key().raw_ref()),
+                    std::str::from_utf8(current.1.key().key_ref()),
                     std::str::from_utf8(current.1.value())
                 );
                 unreachable!("failed");
