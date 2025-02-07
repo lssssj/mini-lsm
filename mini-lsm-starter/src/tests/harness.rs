@@ -430,6 +430,18 @@ pub fn construct_merge_iterator_over_storage(
             SsTableIterator::create_and_seek_to_first(state.sstables.get(t).cloned().unwrap())
                 .unwrap(),
         ));
+        let mut t1 =
+            SsTableIterator::create_and_seek_to_first(state.sstables.get(t).cloned().unwrap())
+                .unwrap();
+        while t1.is_valid() {
+            println!(
+                "{:?} {:?} {:?}",
+                t1.key().ts(),
+                std::str::from_utf8(t1.key().key_ref()),
+                std::str::from_utf8(t1.value())
+            );
+            t1.next();
+        }
     }
     for (_, files) in &state.levels {
         for f in files {
@@ -437,6 +449,18 @@ pub fn construct_merge_iterator_over_storage(
                 SsTableIterator::create_and_seek_to_first(state.sstables.get(f).cloned().unwrap())
                     .unwrap(),
             ));
+            let mut t1 =
+                SsTableIterator::create_and_seek_to_first(state.sstables.get(f).cloned().unwrap())
+                    .unwrap();
+            while t1.is_valid() {
+                println!(
+                    "{:?} {:?} {:?}",
+                    t1.key().ts(),
+                    std::str::from_utf8(t1.key().key_ref()),
+                    std::str::from_utf8(t1.value())
+                );
+                t1.next();
+            }
         }
     }
     MergeIterator::create(iters)
