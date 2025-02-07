@@ -72,8 +72,8 @@ impl Wal {
         let mut hasher = crc32fast::Hasher::new();
         hasher.write_u16(key.key_len() as u16);
         buf.put_u16(key.key_len() as u16);
-        hasher.write(&key.key_ref());
-        buf.put_slice(&key.key_ref());
+        hasher.write(key.key_ref());
+        buf.put_slice(key.key_ref());
         hasher.write_u64(key.ts());
         buf.put_u64(key.ts());
         hasher.write_u16(value.len() as u16);

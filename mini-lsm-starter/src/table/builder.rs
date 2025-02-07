@@ -22,6 +22,7 @@ pub struct SsTableBuilder {
     pub(crate) meta: Vec<BlockMeta>,
     block_size: usize,
     key_hashes: Vec<u32>,
+    max_ts: u64,
 }
 
 impl SsTableBuilder {
@@ -35,6 +36,7 @@ impl SsTableBuilder {
             meta: Vec::new(),
             block_size,
             key_hashes: Vec::new(),
+            max_ts: 0,
         }
     }
 
@@ -45,6 +47,7 @@ impl SsTableBuilder {
     pub fn add(&mut self, key: KeySlice, value: &[u8]) {
         self.key_hashes.push(farmhash::hash32(key.key_ref()));
 
+        self.max_ts = self.max_ts.max(key.ts());
         if !self.builder.add(key, value) {
             let mut builder = BlockBuilder::new(self.block_size);
             std::mem::swap(&mut self.builder, &mut builder);
@@ -95,7 +98,7 @@ impl SsTableBuilder {
         let mut buf = self.data;
         buf.append(&mut block.encode().to_vec());
         let meta_offset = buf.len();
-        BlockMeta::encode_block_meta(&meta_vec, &mut buf);
+        BlockMeta::encode_block_meta(&meta_vec, self.max_ts, &mut buf);
         buf.put_u32(meta_offset as u32);
         let bloom = Bloom::build_from_key_hashes(
             &self.key_hashes,
@@ -114,7 +117,7 @@ impl SsTableBuilder {
             block_meta_offset: meta_offset,
             block_cache,
             bloom: Some(bloom),
-            max_ts: 0, // will be changed to latest ts in week 2
+            max_ts: self.max_ts, // will be changed to latest ts in week 2
         })
     }
 

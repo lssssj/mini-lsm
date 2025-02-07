@@ -34,7 +34,7 @@ impl BlockMeta {
     /// Encode block meta to a buffer.
     /// You may add extra fields to the buffer,
     /// in order to help keep track of `first_key` when decoding from the same buffer in the future.
-    pub fn encode_block_meta(block_meta: &[BlockMeta], buf: &mut Vec<u8>) {
+    pub fn encode_block_meta(block_meta: &[BlockMeta], max_ts: u64, buf: &mut Vec<u8>) {
         let mut estimated_size = std::mem::size_of::<u32>();
         for meta in block_meta {
             // The size of offset
@@ -53,6 +53,8 @@ impl BlockMeta {
             estimated_size += std::mem::size_of::<u64>();
         }
         estimated_size += std::mem::size_of::<u32>();
+        // max_ts
+        estimated_size += std::mem::size_of::<u64>();
         // Reserve the space to improve performance, especially when the size of incoming data is
         // large
         buf.reserve(estimated_size);
@@ -67,12 +69,13 @@ impl BlockMeta {
             buf.put_slice(meta.last_key.key_ref());
             buf.put_u64(meta.last_key.ts());
         }
+        buf.put_u64(max_ts);
         buf.put_u32(crc32fast::hash(&buf[original_len + 4..]));
         assert_eq!(estimated_size, buf.len() - original_len);
     }
 
     /// Decode block meta from a buffer.
-    pub fn decode_block_meta(mut buf: &[u8]) -> Result<Vec<BlockMeta>> {
+    pub fn decode_block_meta(mut buf: &[u8]) -> Result<(Vec<BlockMeta>, u64)> {
         let blk_len = buf.get_u32();
         let mut blk_metas = Vec::new();
         let checksum = crc32fast::hash(&buf[..buf.remaining() - 4]);
@@ -93,10 +96,11 @@ impl BlockMeta {
             };
             blk_metas.push(meta);
         }
+        let max_ts = buf.get_u64();
         if buf.get_u32() != checksum {
             bail!("checksum mismatched!")
         }
-        Ok(blk_metas)
+        Ok((blk_metas, max_ts))
     }
 }
 
@@ -168,7 +172,7 @@ impl SsTable {
         let raw_meta_offset = file.read(bloom_offset - 4, 4)?;
         let block_meta_offset = (&raw_meta_offset[..]).get_u32() as u64;
         let raw_meta = file.read(block_meta_offset, bloom_offset - 4 - block_meta_offset)?;
-        let block_meta = BlockMeta::decode_block_meta(&raw_meta[..])?;
+        let (block_meta, max_ts) = BlockMeta::decode_block_meta(&raw_meta[..])?;
         Ok(Self {
             file,
             first_key: block_meta.first().unwrap().first_key.clone(),
@@ -178,7 +182,7 @@ impl SsTable {
             id,
             block_cache,
             bloom: Some(bloom_filter),
-            max_ts: 0,
+            max_ts,
         })
     }
 

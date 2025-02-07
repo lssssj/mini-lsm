@@ -8,6 +8,7 @@ use crate::{
         CompactionOptions, LeveledCompactionOptions, SimpleLeveledCompactionOptions,
         TieredCompactionOptions,
     },
+    iterators::StorageIterator,
     lsm_storage::{LsmStorageOptions, MiniLsm},
     tests::harness::dump_files_in_dir,
 };
@@ -137,6 +138,22 @@ fn test_integration(compaction_options: CompactionOptions) {
         LsmStorageOptions::default_for_week2_test(compaction_options.clone()),
     )
     .unwrap();
+    let mut opt = storage
+        .scan(std::ops::Bound::Unbounded, std::ops::Bound::Unbounded)
+        .unwrap();
+    while opt.is_valid() {
+        println!(
+            "{:?} {:?}",
+            std::str::from_utf8(opt.key()),
+            std::str::from_utf8(opt.value())
+        );
+        let _ = opt.next();
+    }
+
+    println!(
+        "{:?}",
+        std::str::from_utf8(&storage.get(b"0").unwrap().unwrap()[..])
+    );
     assert_eq!(&storage.get(b"0").unwrap().unwrap()[..], b"v20".as_slice());
     assert_eq!(&storage.get(b"1").unwrap().unwrap()[..], b"v20".as_slice());
     assert_eq!(storage.get(b"2").unwrap(), None);
