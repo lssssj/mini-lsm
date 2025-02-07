@@ -117,6 +117,7 @@ impl LsmStorageInner {
         &self,
         mut iter: impl for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>,
         compact_to_bottom_level: bool,
+        watermark: u64,
     ) -> Result<Vec<Arc<SsTable>>> {
         let mut result = Vec::new();
         let mut builder: Option<SsTableBuilder> = None;
@@ -125,9 +126,23 @@ impl LsmStorageInner {
         while iter.is_valid() {
             // mvcc
             // if iter.value().is_empty() && compact_to_bottom_level {
-            //    let _ = iter.next();
-            //    continue;
+            //     let _ = iter.next();
+            //     continue;
             // }
+            if iter.key().key_ref() != last_key
+                && iter.value().is_empty()
+                && compact_to_bottom_level
+                && iter.key().ts() <= watermark
+            {
+                last_key = iter.key().key_ref().to_vec();
+                let _ = iter.next();
+                continue;
+            }
+            if iter.key().key_ref() == last_key && iter.key().ts() < watermark {
+                // println!("del {:?} {:?} {:?} {:?}", iter.key(), iter.value(), iter.key().ts(), watermark);
+                let _ = iter.next();
+                continue;
+            }
 
             if builder.is_some() {
                 builder.as_mut().unwrap().add(iter.key(), iter.value());
@@ -195,7 +210,8 @@ impl LsmStorageInner {
                     MergeIterator::create(l0_sst_iters),
                     SstConcatIterator::create_and_seek_to_first(l1_sst_iters)?,
                 )?;
-                self.compact_sst_from_iter(iter, true)
+
+                self.compact_sst_from_iter(iter, true, self.mvcc().watermark())
             }
             CompactionTask::Simple(SimpleLeveledCompactionTask {
                 upper_level,
@@ -228,7 +244,11 @@ impl LsmStorageInner {
                     }
                     let lower_iter = SstConcatIterator::create_and_seek_to_first(lower_ssts)?;
                     let iter = TwoMergeIterator::create(upper_iter, lower_iter)?;
-                    self.compact_sst_from_iter(iter, *is_lower_level_bottom_level)
+                    self.compact_sst_from_iter(
+                        iter,
+                        *is_lower_level_bottom_level,
+                        self.mvcc().watermark(),
+                    )
                 } else {
                     let mut l0_sst_iters = Vec::with_capacity(upper_level_sst_ids.len());
                     for id in upper_level_sst_ids {
@@ -246,7 +266,11 @@ impl LsmStorageInner {
                     }
                     let lower_iter = SstConcatIterator::create_and_seek_to_first(lower_ssts)?;
                     let iter = TwoMergeIterator::create(upper_iter, lower_iter)?;
-                    self.compact_sst_from_iter(iter, *is_lower_level_bottom_level)
+                    self.compact_sst_from_iter(
+                        iter,
+                        *is_lower_level_bottom_level,
+                        self.mvcc().watermark(),
+                    )
                 }
             }
             CompactionTask::Tiered(tiered) => {
@@ -263,6 +287,7 @@ impl LsmStorageInner {
                 self.compact_sst_from_iter(
                     MergeIterator::create(iters),
                     tiered.bottom_tier_included,
+                    self.mvcc().watermark(),
                 )
             }
         }
