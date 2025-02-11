@@ -10,7 +10,7 @@ use std::{
     },
 };
 
-use anyhow::{Ok, Result};
+use anyhow::{bail, Ok, Result};
 use bytes::Bytes;
 use crossbeam_skiplist::{map::Entry, SkipMap};
 use ouroboros::self_referencing;
@@ -22,6 +22,8 @@ use crate::{
     lsm_storage::{LsmStorageInner, WriteBatchRecord},
     mem_table::map_bound,
 };
+
+use super::CommittedTxnData;
 
 pub struct Transaction {
     pub(crate) read_ts: u64,
@@ -38,8 +40,13 @@ impl Transaction {
             panic!("cannot operate on committed txn!");
         }
 
-        let entry = self.local_storage.get(key);
-        if let Some(entry) = entry {
+        if let Some(guard) = &self.key_hashes {
+            let mut guard = guard.lock();
+            let (_, read_set) = &mut *guard;
+            read_set.insert(farmhash::hash32(key));
+        }
+
+        if let Some(entry) = self.local_storage.get(key) {
             if entry.value().is_empty() {
                 return Ok(None);
             } else {
@@ -75,6 +82,11 @@ impl Transaction {
 
         self.local_storage
             .insert(Bytes::copy_from_slice(key), Bytes::copy_from_slice(value));
+        if let Some(guard) = &self.key_hashes {
+            let mut guard = guard.lock();
+            let (write_set, _) = &mut *guard;
+            write_set.insert(farmhash::hash32(key));
+        }
     }
 
     pub fn delete(&self, key: &[u8]) {
@@ -84,6 +96,11 @@ impl Transaction {
 
         self.local_storage
             .insert(Bytes::copy_from_slice(key), Bytes::copy_from_slice(&[]));
+        if let Some(guard) = &self.key_hashes {
+            let mut guard = guard.lock();
+            let (write_set, _) = &mut *guard;
+            write_set.insert(farmhash::hash32(key));
+        }
     }
 
     pub fn commit(&self) -> Result<()> {
@@ -91,6 +108,34 @@ impl Transaction {
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .expect("cannot operate on committed txn!");
         let _commit_lock = self.inner.mvcc().commit_lock.lock();
+
+        let serializability_check;
+        if let Some(guard) = &self.key_hashes {
+            let guard = guard.lock();
+            let (write_set, read_set) = &*guard;
+            println!(
+                "commit txn: write_set: {:?}, read_set: {:?}",
+                write_set, read_set
+            );
+
+            for (_, txn_data) in self
+                .inner
+                .mvcc()
+                .committed_txns
+                .lock()
+                .range((self.read_ts + 1)..)
+            {
+                for key in read_set {
+                    if txn_data.key_hashes.contains(key) {
+                        bail!("serializable check failed");
+                    }
+                }
+            }
+            serializability_check = true;
+        } else {
+            serializability_check = false;
+        }
+
         let batch = self
             .local_storage
             .iter()
@@ -102,7 +147,34 @@ impl Transaction {
                 }
             })
             .collect::<Vec<_>>();
-        self.inner.write_batch(&batch)?;
+        let ts = self.inner.write_batch_inner(&batch)?;
+        if serializability_check {
+            let mut committed_txns = self.inner.mvcc().committed_txns.lock();
+            let mut key_hashes = self.key_hashes.as_ref().unwrap().lock();
+            let (write_set, _) = &mut *key_hashes;
+
+            let old_data = committed_txns.insert(
+                ts,
+                CommittedTxnData {
+                    key_hashes: std::mem::take(write_set),
+                    read_ts: self.read_ts,
+                    commit_ts: ts,
+                },
+            );
+            assert!(old_data.is_none());
+            // remove unneeded txn data
+            let watermark = self.inner.mvcc().watermark();
+            // println!("watermark {:?}", watermark);
+            while let Some(entry) = committed_txns.first_entry() {
+                // println!("entry {:?}", *entry.key());
+                if *entry.key() < watermark {
+                    entry.remove();
+                } else {
+                    break;
+                }
+            }
+        }
+
         Ok(())
     }
 }
