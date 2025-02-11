@@ -19,8 +19,8 @@ use crate::iterators::concat_iterator::SstConcatIterator;
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
-use crate::key::KeySlice;
-use crate::lsm_storage::{LsmStorageInner, LsmStorageState};
+use crate::key::{self, KeySlice};
+use crate::lsm_storage::{CompactionFilter, LsmStorageInner, LsmStorageState};
 use crate::table::{SsTable, SsTableBuilder, SsTableIterator};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -123,12 +123,32 @@ impl LsmStorageInner {
         let mut builder: Option<SsTableBuilder> = None;
         let mut last_key = Vec::<u8>::new();
 
+        let compaction_filters = &*self.compaction_filters.lock();
+
         while iter.is_valid() {
             // mvcc
             // if iter.value().is_empty() && compact_to_bottom_level {
             //     let _ = iter.next();
             //     continue;
             // }
+            let mut filtered = false;
+            for filter in compaction_filters {
+                match filter {
+                    CompactionFilter::Prefix(prefix) => {
+                        if iter.key().key_ref().starts_with(&prefix) && iter.key().ts() <= watermark
+                        {
+                            let _ = iter.next();
+                            filtered = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if filtered {
+                continue;
+            }
+
             if iter.key().key_ref() != last_key
                 && iter.value().is_empty()
                 && compact_to_bottom_level
