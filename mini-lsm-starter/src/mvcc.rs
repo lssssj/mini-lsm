@@ -17,6 +17,7 @@ use crate::lsm_storage::LsmStorageInner;
 use self::{txn::Transaction, watermark::Watermark};
 
 pub(crate) struct CommittedTxnData {
+    /// write_set
     pub(crate) key_hashes: HashSet<u32>,
     #[allow(dead_code)]
     pub(crate) read_ts: u64,
